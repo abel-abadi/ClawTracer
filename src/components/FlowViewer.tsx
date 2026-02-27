@@ -12,11 +12,11 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { OpenClawAction } from '../types';
+import { ParsedAction } from '../types';
 
 interface FlowViewerProps {
-  data: OpenClawAction[];
-  onNodeClick: (nodeData: OpenClawAction) => void;
+  data: ParsedAction[];
+  onNodeClick: (nodeData: ParsedAction) => void;
 }
 
 const nodeWidth = 350;
@@ -53,7 +53,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => 
 
 
 export const FlowViewer: React.FC<FlowViewerProps> = ({ data, onNodeClick }) => {
-  const { initialNodes, initialEdges } = useMemo(() => {
+  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
     
@@ -121,7 +121,7 @@ export const FlowViewer: React.FC<FlowViewerProps> = ({ data, onNodeClick }) => 
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={(_, node) => onNodeClick(node.data.rawData as OpenClawAction)}
+        onNodeClick={(_, node) => onNodeClick(node.data.rawData as ParsedAction)}
         fitView
         attributionPosition="bottom-right"
       >

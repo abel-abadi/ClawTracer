@@ -1,11 +1,11 @@
 import React from 'react';
-import { OpenClawAction } from '../types';
+import { ParsedAction } from '../types';
 import { ScrollArea } from './ui/scroll-area';
 import { Badge } from './ui/badge';
 import { ShieldAlert, Terminal, Brain, MessageSquare } from 'lucide-react';
 
 interface InspectorSidebarProps {
-  action: OpenClawAction | null;
+  action: ParsedAction | null;
 }
 
 export const InspectorSidebar: React.FC<InspectorSidebarProps> = ({ action }) => {
@@ -48,12 +48,6 @@ export const InspectorSidebar: React.FC<InspectorSidebarProps> = ({ action }) =>
               <span className="font-mono text-xs">{action.id}</span>
               <span className="text-muted-foreground">Time:</span>
               <span>{new Date(action.timestamp).toLocaleTimeString()}</span>
-              {action.agent_name && (
-                <>
-                  <span className="text-muted-foreground">Agent:</span>
-                  <span>{action.agent_name}</span>
-                </>
-              )}
             </div>
           </section>
 

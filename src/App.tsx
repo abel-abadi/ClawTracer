@@ -1,12 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { UploadCloud, FileJson, Github } from 'lucide-react';
-import { OpenClawAction } from './types';
+import { ParsedAction } from './types';
 import { FlowViewer } from './components/FlowViewer';
 import { InspectorSidebar } from './components/InspectorSidebar';
 
 function App() {
-  const [traceData, setTraceData] = useState<OpenClawAction[] | null>(null);
-  const [selectedAction, setSelectedAction] = useState<OpenClawAction | null>(null);
+  const [traceData, setTraceData] = useState<ParsedAction[] | null>(null);
+  const [selectedAction, setSelectedAction] = useState<ParsedAction | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -18,24 +18,80 @@ function App() {
       try {
         const content = e.target?.result as string;
         
-        // Naive JSON/JSONL parser for MVP
-        let parsedData: OpenClawAction[];
+        let rawLogs: any[] = [];
         try {
-          // Try parsing as a single JSON array first (like our mock file)
-          parsedData = JSON.parse(content);
+          rawLogs = JSON.parse(content);
         } catch {
-          // If that fails, assume JSONL (one JSON object per line)
-           parsedData = content
+          rawLogs = content
             .split('\n')
             .filter(line => line.trim())
-            .map(line => JSON.parse(line));
+            .map(line => {
+              try { return JSON.parse(line); } catch { return null; }
+            })
+            .filter(Boolean);
         }
 
-        setTraceData(parsedData);
+        const parsedData: ParsedAction[] = [];
+
+        rawLogs.forEach((log) => {
+          if (log.type !== 'message' || !log.message?.content) return;
+          
+          log.message.content.forEach((item: any, index: number) => {
+            const actionId = `${log.timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            if (log.message.role === 'assistant') {
+               if (item.type === 'text') {
+                 // Thought or final response
+                 parsedData.push({
+                   id: actionId,
+                   timestamp: log.timestamp,
+                   type: 'thought',
+                   content: item.text,
+                   cost: log.message.usage?.cost?.total,
+                   raw: log
+                 } as any);
+               } else if (item.type === 'toolCall') {
+                 // Tool Execution
+                 parsedData.push({
+                   id: actionId,
+                   timestamp: log.timestamp,
+                   type: 'tool_call',
+                   tool_name: item.name,
+                   tool_args: item.input,
+                   cost: log.message.usage?.cost?.total,
+                   raw: log
+                 } as any);
+               }
+            } else if (log.message.role === 'toolResult') {
+               // Observation / Tool Result
+               const isError = item.isError === true;
+               parsedData.push({
+                 id: actionId,
+                 timestamp: log.timestamp,
+                 type: 'observation',
+                 source_tool: item.name || 'Unknown Tool',
+                 result: item.result || item.text, // format varies
+                 isError: isError,
+                 exit_code: isError ? 1 : 0,
+                 stderr: isError ? (item.result || item.text) : '',
+                 stdout: !isError ? (item.result || item.text) : '',
+                 raw: log
+               } as any);
+            }
+          });
+        });
+
+        // Use mock data if empty (e.g., parsing naive JSON instead of JSONL)
+        if (parsedData.length === 0 && rawLogs.length > 0 && rawLogs[0].type === 'thought') {
+            setTraceData(rawLogs as any[]);
+        } else {
+            setTraceData(parsedData);
+        }
+        
         setError(null);
         setSelectedAction(null);
       } catch (err) {
-        setError('Failed to parse file. Please ensure it is a valid JSON array or JSONL file containing OpenClaw actions.');
+        setError('Failed to parse file. Please ensure it is a valid OpenClaw .jsonl session log.');
         console.error(err);
       }
     };
@@ -44,9 +100,65 @@ function App() {
 
   const loadSampleData = async () => {
     try {
-      const response = await fetch('/sample-trace.json');
-      const data = await response.json();
-      setTraceData(data);
+      const response = await fetch('/sample-trace.jsonl');
+      const text = await response.text();
+      
+      const rawLogs = text
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => {
+          try { return JSON.parse(line); } catch { return null; }
+        })
+        .filter(Boolean);
+
+      const parsedData: ParsedAction[] = [];
+
+      rawLogs.forEach((log) => {
+        if (log.type !== 'message' || !log.message?.content) return;
+        
+        log.message.content.forEach((item: any, index: number) => {
+          const actionId = `${log.timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          if (log.message.role === 'assistant') {
+             if (item.type === 'text') {
+               parsedData.push({
+                 id: actionId,
+                 timestamp: log.timestamp || new Date().toISOString(),
+                 type: 'thought',
+                 content: item.text,
+                 cost: log.message.usage?.cost?.total,
+                 raw: log
+               } as any);
+             } else if (item.type === 'toolCall') {
+               parsedData.push({
+                 id: actionId,
+                 timestamp: log.timestamp || new Date().toISOString(),
+                 type: 'tool_call',
+                 tool_name: item.name,
+                 tool_args: item.input,
+                 cost: log.message.usage?.cost?.total,
+                 raw: log
+               } as any);
+             }
+          } else if (log.message.role === 'toolResult') {
+             const isError = item.isError === true;
+             parsedData.push({
+               id: actionId,
+               timestamp: log.timestamp || new Date().toISOString(),
+               type: 'observation',
+               source_tool: item.name || 'Unknown Tool',
+               result: item.result || item.text,
+               isError: isError,
+               exit_code: isError ? 1 : 0,
+               stderr: isError ? (item.result || item.text) : '',
+               stdout: !isError ? (item.result || item.text) : '',
+               raw: log
+             } as any);
+          }
+        });
+      });
+
+      setTraceData(parsedData);
       setError(null);
       setSelectedAction(null);
     } catch (err) {
